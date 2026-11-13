@@ -1,155 +1,201 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Icône dans la zone de notification (systray), dessin dynamique et boucle d'événements.
+Zone de notification (systray) native Windows avec PyQt6 (QSystemTrayIcon).
 """
 
-import ctypes
-import queue
+import sys
 import threading
 from typing import Any, Optional
 
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPen, QPixmap
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+
 from switch_battery_leds.autostart import fatal
+from switch_battery_leds.constants import APP_NAME
 from switch_battery_leds.ui.settings_window import SettingsWindow
 
 
-def make_tray_image(percent: Optional[int], charging: bool, connected: bool):
-    """Icône 64x64 : fond coloré selon le niveau, pourcentage au centre."""
-    from PIL import Image, ImageDraw, ImageFont
-
+def make_tray_pixmap(percent: Optional[int], charging: bool, connected: bool) -> QPixmap:
+    """Génère un pixmap 64x64 net avec fond coloré arrondi et pourcentage centré."""
     size = 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+    # Détermination de la couleur et du texte
     if not connected or percent is None:
-        color, text = (110, 110, 110, 255), "--"
+        bg_color = QColor(110, 110, 110)
+        text = "--"
     else:
-        color = (
-            (46, 160, 67, 255)
-            if percent >= 25
-            else (219, 140, 20, 255)
-            if percent >= 10
-            else (207, 48, 48, 255)
-        )
+        if percent >= 25:
+            bg_color = QColor(46, 160, 67)    # Vert
+        elif percent >= 10:
+            bg_color = QColor(219, 140, 20)   # Orange
+        else:
+            bg_color = QColor(207, 48, 48)    # Rouge
         text = str(percent)
-    d.rounded_rectangle(
-        (1, 1, size - 2, size - 2),
-        radius=14,
-        fill=color,
-        outline=(255, 255, 255, 255) if charging else None,
-        width=5,
+
+    # Contour blanc pendant la charge
+    if charging:
+        pen = QPen(QColor(255, 255, 255), 4)
+        painter.setPen(pen)
+    else:
+        painter.setPen(Qt.PenStyle.NoPen)
+
+    painter.setBrush(bg_color)
+    margin = 3 if charging else 2
+    painter.drawRoundedRect(
+        margin, margin, size - margin * 2, size - margin * 2, 14, 14
     )
-    font_size = 46 if len(text) <= 2 else 31
-    font = None
-    for name in ("arialbd.ttf", "arial.ttf", "DejaVuSans-Bold.ttf"):
-        try:
-            font = ImageFont.truetype(name, font_size)
-            break
-        except Exception:
-            pass
-    if font is None:
-        font = ImageFont.load_default()
-    try:
-        d.text((size / 2, size / 2 + 1), text, font=font, fill="white", anchor="mm")
-    except Exception:
-        d.text((6, 20), text, font=font, fill="white")
-    return img
+
+    # Texte centré
+    painter.setPen(QColor(255, 255, 255))
+    font_size = 28 if len(text) <= 2 else 20
+    font = QFont("Segoe UI", font_size, QFont.Weight.Bold)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, text)
+
+    painter.end()
+    return pixmap
+
+
+def make_tray_icon(percent: Optional[int], charging: bool, connected: bool) -> QIcon:
+    return QIcon(make_tray_pixmap(percent, charging, connected))
+
+
+class MonitorBridge(QObject):
+    """Pont de communication thread-safe entre le thread Monitor et la boucle d'événements Qt."""
+    status_changed = pyqtSignal()
 
 
 def run_tray(settings: Any, monitor: Any) -> None:
-    try:
-        import tkinter as tk
-        import pystray
-        from PIL import Image  # noqa: F401
-    except ImportError as err:
-        fatal(f"Module manquant : {err}\nInstalle-le avec :  pip install pystray pillow")
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
 
-    try:  # texte net sur les écrans à haute densité
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    except Exception:
-        pass
+    # Empêche l'application de se fermer quand on ferme la fenêtre des paramètres
+    app.setQuitOnLastWindowClosed(False)
+    app.setApplicationName(APP_NAME)
 
-    root = tk.Tk()
-    root.withdraw()
-    commands: queue.Queue = queue.Queue()
-    ui = {"signature": None, "window": None}
+    if not QSystemTrayIcon.isSystemTrayAvailable():
+        fatal("La zone de notification système (systray) n'est pas disponible.")
 
-    def refresh_tray():
-        """Appelé depuis le thread de surveillance quand l'état change."""
-        st = monitor.status
-        signature = (st["connected"], st["percent"], st["charging"])
-        text = monitor.status_text()
-        try:
-            if signature != ui["signature"]:
-                ui["signature"] = signature
-                icon.icon = make_tray_image(st["percent"], st["charging"], st["connected"])
-            icon.title = text[:127]
-            icon.update_menu()
-        except Exception:
-            pass
+    # Icône systray
+    initial_icon = make_tray_icon(None, False, False)
+    tray = QSystemTrayIcon(initial_icon, app)
+    tray.setToolTip(monitor.status_text())
 
-    def toggle_notifications(icon_, item):
-        settings.notifications = not settings.notifications
+    # Fenêtre des paramètres
+    settings_win = SettingsWindow(settings, monitor)
+
+    # Menu contextuel
+    menu = QMenu()
+    menu.setStyleSheet("""
+        QMenu {
+            background-color: #2b2b2b;
+            color: #ffffff;
+            border: 1px solid #3f3f3f;
+            border-radius: 8px;
+            padding: 5px;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 13px;
+        }
+        QMenu::item {
+            padding: 6px 20px 6px 12px;
+            border-radius: 4px;
+        }
+        QMenu::item:selected {
+            background-color: #0078d4;
+        }
+        QMenu::separator {
+            height: 1px;
+            background: #3f3f3f;
+            margin: 4px 6px;
+        }
+    """)
+
+    action_status = QAction(monitor.status_text(), menu)
+    action_status.setEnabled(False)
+    menu.addAction(action_status)
+
+    menu.addSeparator()
+
+    action_settings = QAction("Paramètres...", menu)
+    action_settings.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+    action_settings.triggered.connect(settings_win.focus)
+    menu.addAction(action_settings)
+
+    action_notif = QAction("Notifications", menu)
+    action_notif.setCheckable(True)
+    action_notif.setChecked(settings.notifications)
+
+    def toggle_notifications():
+        settings.notifications = action_notif.isChecked()
         settings.save()
         monitor.apply_settings()
+        if settings_win.isVisible():
+            settings_win.chk_notif.setChecked(settings.notifications)
 
-    menu = pystray.Menu(
-        pystray.MenuItem(lambda item: monitor.status_text(), None, enabled=False),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem(
-            "Paramètres...", lambda icon_, item: commands.put("settings"), default=True
-        ),
-        pystray.MenuItem(
-            "Notifications",
-            toggle_notifications,
-            checked=lambda item: settings.notifications,
-        ),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Quitter", lambda icon_, item: commands.put("quit")),
-    )
-    icon = pystray.Icon(
-        "switch_battery_leds",
-        make_tray_image(None, False, False),
-        monitor.status_text(),
-        menu,
-    )
+    action_notif.triggered.connect(toggle_notifications)
+    menu.addAction(action_notif)
 
+    menu.addSeparator()
+
+    action_quit = QAction("Quitter", menu)
+    action_quit.triggered.connect(app.quit)
+    menu.addAction(action_quit)
+
+    tray.setContextMenu(menu)
+
+    # Clic gauche sur l'icône -> ouvrir / basculer les paramètres
+    def on_tray_activated(reason):
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            if settings_win.isVisible() and not settings_win.isMinimized():
+                settings_win.hide()
+            else:
+                settings_win.focus()
+
+    tray.activated.connect(on_tray_activated)
+
+    # Mise à jour graphique
+    bridge = MonitorBridge()
+    last_signature = [None]
+
+    def on_monitor_status():
+        st = monitor.status
+        sig = (st["connected"], st["percent"], st["charging"])
+        text = monitor.status_text()
+
+        if sig != last_signature[0]:
+            last_signature[0] = sig
+            tray.setIcon(make_tray_icon(st["percent"], st["charging"], st["connected"]))
+
+        tray.setToolTip(text[:127])
+        action_status.setText(text)
+        action_notif.setChecked(settings.notifications)
+
+        if settings_win.isVisible():
+            settings_win.update_status()
+
+    bridge.status_changed.connect(on_monitor_status)
+    monitor.on_status = bridge.status_changed.emit
+
+    # Démarrage du thread de surveillance
     worker = threading.Thread(target=monitor.run, name="surveillance", daemon=True)
-
-    def open_settings():
-        win = ui["window"]
-        if win and win.exists():
-            win.focus()
-        else:
-            ui["window"] = SettingsWindow(root, settings, monitor)
-            ui["window"].focus()
-
-    def poll():
-        try:
-            while True:
-                command = commands.get_nowait()
-                if command == "settings":
-                    open_settings()
-                elif command == "quit":
-                    root.quit()
-                    return
-        except queue.Empty:
-            pass
-        root.after(200, poll)
-
-    monitor.on_status = refresh_tray
-    icon.run_detached()
+    tray.show()
     worker.start()
-    root.after(200, poll)
+
     try:
-        root.mainloop()
+        app.exec()
     finally:
         monitor.stop()
-        worker.join(timeout=5)  # laisse le temps de remettre les LED sur « joueur 1 »
-        try:
-            icon.stop()
-        except Exception:
-            pass
-        try:
-            root.destroy()
-        except Exception:
-            pass
+        worker.join(timeout=5)
+        tray.hide()

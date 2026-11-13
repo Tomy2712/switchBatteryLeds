@@ -126,15 +126,15 @@ switchBatteryLeds/
 │   ├── notifier.py                 # Notifications Windows et barre de progression
 │   ├── monitor.py                  # Thread de surveillance et orchestrateur d'état
 │   ├── cli.py                      # Analyseur d'arguments CLI et routine de lancement
-│   └── ui/                         # Interface utilisateur
+│   └── ui/                         # Interface utilisateur moderne PyQt6
 │       ├── __init__.py
-│       ├── tray.py                 # Icône systray dynamique (pystray + PIL)
-│       └── settings_window.py      # Fenêtre de configuration graphique (Tkinter/ttk)
+│       ├── tray.py                 # Icône systray native et menu contextuel (QSystemTrayIcon)
+│       └── settings_window.py      # Fenêtre de configuration Fluent Dark (PyQt6)
 ├── switch_battery_leds.py          # Script exécutable d'entrée (rétro-compatible)
 ├── SwitchBatteryLEDs.spec          # Fichier de configuration PyInstaller
 ├── build.ps1                       # Script de compilation PowerShell
 ├── build.bat                       # Script de compilation Windows Batch
-├── requirements.txt                # Dépendances applicatives
+├── requirements.txt                # Dépendances applicatives (PyQt6, hidapi, windows-toasts)
 ├── requirements-dev.txt            # Dépendances de développement et de build
 ├── .gitignore                      # Fichiers exclus du suivi Git
 └── README.md                       # Documentation du projet

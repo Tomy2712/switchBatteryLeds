@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas = []
 binaries = []
-hiddenimports = ['pystray._win32']
+hiddenimports = []
 hiddenimports += collect_submodules('winrt')
 hiddenimports += collect_submodules('switch_battery_leds')
 
@@ -21,7 +21,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['tkinter', 'pystray', 'PIL', 'matplotlib', 'scipy'],
     noarchive=False,
     optimize=0,
 )
