@@ -1,4 +1,4 @@
-# SwitchBatteryLEDs 🎮🔋
+# SwitchBatteryLEDs
 
 **SwitchBatteryLEDs** permet de surveiller facilement le niveau de batterie de vos manettes Nintendo Switch (**Pro Controller** et **Joy-Con**) connectées à votre PC sous Windows (via **Bluetooth** ou **câble USB**).
 
@@ -11,7 +11,7 @@ L'application affiche le niveau de batterie :
 
 ---
 
-## 📋 Prérequis
+## Prérequis
 
 - **Système d'exploitation** : Windows 10 ou Windows 11 (64-bit).
 - **Python** : Python 3.10+ (recommandé : Python 3.12).
@@ -22,7 +22,7 @@ L'application affiche le niveau de batterie :
 
 ---
 
-## 🚀 Installation
+## Installation
 
 1. **Cloner le dépôt Git :**
    ```bash
@@ -43,7 +43,7 @@ L'application affiche le niveau de batterie :
 
 ---
 
-## 🕹️ Utilisation
+## Utilisation
 
 ### Mode normal (zone de notification / arrière-plan)
 Pour lancer l'application en arrière-plan sans fenêtre de console :
@@ -72,7 +72,7 @@ options:
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 Les paramètres sont automatiquement sauvegardés dans :  
 `%APPDATA%\SwitchBatteryLEDs\settings.json`
@@ -87,7 +87,7 @@ Ils sont modifiables directement depuis la fenêtre de paramètres (clic gauche 
 
 ---
 
-## 📦 Compilation en exécutable autonome (.exe)
+## Compilation en exécutable autonome (.exe)
 
 Pour générer un fichier exécutable indépendant ne nécessitant pas d'installation préalable de Python :
 
@@ -112,7 +112,7 @@ L'exécutable autonome est généré dans le répertoire **`dist/SwitchBatteryLE
 
 ---
 
-## 📁 Structure du projet
+## Structure du projet
 
 ```text
 switchBatteryLeds/
@@ -142,6 +142,6 @@ switchBatteryLeds/
 
 ---
 
-## 📄 Licence
+## Licence
 
 Projet sous licence MIT (ou Domaine Public). Vous êtes libre de l'utiliser, le modifier et le redistribuer.
